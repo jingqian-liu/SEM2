@@ -9,7 +9,6 @@ class SEMSolver:
         self.solver = KrylovSolver(method, preconditioner)
         self.solver.parameters["relative_tolerance"] = rel_tol
         self.solver.parameters["maximum_iterations"] = max_it
-        set_log_level(log_level)
     
     def get_solver(self):
         """

@@ -6,6 +6,9 @@ import numpy as np
 from sem_sys import sem_sys
 from solver import SEMSolver
 
+# Set the FEniCS log level to suppress lower-priority messages.
+set_log_level(30)
+
 if __name__ == '__main__':
     # The first argument is the comfile listing grids.
     comfile = sys.argv[1]
