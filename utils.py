@@ -1,5 +1,6 @@
 import os
 import numpy as np
+from scipy.interpolate import interp1d
 
 def condfrac(invec):
     """
@@ -96,3 +97,56 @@ def readbinGrid(name, maskRad=-1):
     Hm = H - delta[2]
     return val3d, [Lm, Wm, Hm], [nx, ny, nz]
 
+
+
+def get_radius(atom_type, rules, default=1.5):
+    """
+    Given an atom type and a list of rules, return the corresponding radius.
+    If no rule applies, return the default value.
+
+    Parameters:
+        atom_type (str): The atom type string.
+        rules (list): A list of dicts with keys "prefix" and "radius".
+        default (float): The default radius if no rule matches.
+
+    Returns:
+        float: The radius for the given atom type.
+    """
+    for rule in rules:
+        if atom_type.startswith(rule["prefix"]):
+            return rule["radius"]
+    return default
+
+
+
+
+def read_dist_to_conc(csv_file):
+    """
+    Given a CSV file with two columns (distance in Å, scaled ion concentration),
+    return an interpolation function that maps any distance to its corresponding
+    scaled ion concentration using cubic interpolation.
+
+    Parameters:
+        csv_file (str): Path to the CSV file.
+
+    Returns:
+        interp_func (function): A function that takes a distance (or array of distances)
+                                  and returns the interpolated scaled ion concentration.
+    """
+    # Load data from CSV; adjust delimiter if needed (default here is comma).
+    data = np.loadtxt(csv_file, delimiter=',')
+
+    # Extract distances and concentrations.
+    distances = data[:, 0]
+    concentrations = data[:, 1]
+
+    # Optional: sort the data by distances (in case they are not sorted)
+    sorted_indices = np.argsort(distances)
+    distances = distances[sorted_indices]
+    concentrations = concentrations[sorted_indices]
+
+    # Create an interpolation function with cubic interpolation.
+    # 'fill_value="extrapolate"' allows extrapolation beyond the provided data.
+    interp_func = interp1d(distances, concentrations, kind='cubic', fill_value="extrapolate")
+
+    return interp_func

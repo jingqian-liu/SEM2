@@ -13,7 +13,9 @@ if __name__ == '__main__':
     solver = solver_obj.get_solver()
     
     # Initialize the system using the first grid file.
-    system = sem_sys("wrap.psf", "wrap.dcd", sigma=1.12, Volts=0.15, margin = 38.0)
+    system = sem_sys("wrap.psf", "wrap.dcd", sigma=1.12, Volts=0.15, margin = 50.0,
+             str_file = "radius_mapping.json",
+             consider_conc = True, charge_atom_name = 'P', interp_func = 'conc_interp.csv', consider_conc_cutoff = 5.0)
     
     for I in range(system.n_frames):
         # Update the conductivity field on the mesh.
@@ -26,4 +28,8 @@ if __name__ == '__main__':
         ft, fb = system.calculate_current()
         print("Flux through top boundary:", ft)
         print("Flux through bottom boundary:", fb)
+
+        # Save the top flux (ft) to an output file named with the frame index.
+        np.savetxt(f"ft_frame_{I}.dat", np.array([ft]))
     
+
