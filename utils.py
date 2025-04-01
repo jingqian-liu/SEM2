@@ -1,6 +1,8 @@
 import os
 import numpy as np
 from scipy.interpolate import interp1d
+import MDAnalysis as mda
+import matplotlib.pyplot as plt
 
 def condfrac(invec):
     """
@@ -150,3 +152,137 @@ def read_dist_to_conc(csv_file):
     interp_func = interp1d(distances, concentrations, kind='cubic', fill_value="extrapolate")
 
     return interp_func
+
+
+
+
+def compute_avg_ion_conc_map(universe, grid_points, fine_grid_shape, resolution=1.0, coarse_resolution=3.0):
+    """
+    Compute an averaged ion concentration map over the trajectory on a coarse grid 
+    (e.g. 3 Å resolution), then upsample to the high-resolution grid (e.g. 1 Å resolution).
+    Handles ions that fall just outside the coarse grid (within one fine grid cell).
+    
+    Parameters:
+        universe (MDAnalysis.Universe): The MD trajectory.
+        grid_points (np.ndarray): Array of shape (N, 3) with coordinates of each fine grid point.
+        fine_grid_shape (tuple): The fine grid dimensions (nx, ny, nz) corresponding to resolution (default=1 Å).
+        ion_selection (str): MDAnalysis selection string for the ions (e.g. "resname NA or resname CL").
+        resolution (float): The fine grid resolution in Å (default 1.0).
+        coarse_resolution (float): The resolution for coarse gridding (e.g. 3.0).
+    
+    Returns:
+        fine_conc_map (np.ndarray): A 3D array (shape fine_grid_shape) containing the ion concentration (M)
+                                    averaged over the trajectory.
+    """
+    # Determine the grid minimum from the fine grid points.
+    grid_min = np.min(grid_points, axis=0)  # (x_min, y_min, z_min)
+
+    # Calculate the coarse factor
+    coarse_factor = int(coarse_resolution / resolution)
+    
+    # Compute coarse grid shape assuming fine grid shape is divisible by coarse_factor.
+    nx_fine, ny_fine, nz_fine = fine_grid_shape
+    nx_coarse = nx_fine // coarse_factor
+    ny_coarse = ny_fine // coarse_factor
+    nz_coarse = nz_fine // coarse_factor
+    coarse_shape = (nx_coarse, ny_coarse, nz_coarse)
+    
+    # Initialize accumulators for coarse and fine counts.
+    coarse_counts = np.zeros(coarse_shape, dtype=float)
+    fine_counts = np.zeros(fine_grid_shape, dtype=float)
+    frame_count = 0
+
+    # Loop over frames in the trajectory.
+    for ts in universe.trajectory:
+        # Select ions using the provided selection string.
+        sel = universe.select_atoms("name POT SOD CLA")
+        if len(sel) == 0:
+            continue
+        ion_positions = sel.positions
+        
+        # Compute coarse grid cell indices for each ion.
+        coarse_indices = np.floor((ion_positions - grid_min) / coarse_resolution).astype(int)
+        
+        # Check if ions are within coarse grid or just outside (within one fine cell)
+        valid_coarse = ((coarse_indices[:, 0] >= 0) & (coarse_indices[:, 0] < nx_coarse) &
+                       (coarse_indices[:, 1] >= 0) & (coarse_indices[:, 1] < ny_coarse) &
+                       (coarse_indices[:, 2] >= 0) & (coarse_indices[:, 2] < nz_coarse))
+        
+        valid_fine = ((coarse_indices[:, 0] >= 0) & (coarse_indices[:, 0] <= nx_coarse) &
+                      (coarse_indices[:, 1] >= 0) & (coarse_indices[:, 1] <= ny_coarse) &
+                      (coarse_indices[:, 2] >= 0) & (coarse_indices[:, 2] <= nz_coarse))
+        
+        # Separate ions into those in coarse grid and those just outside
+        ions_coarse = ion_positions[valid_coarse]
+        ions_fine = ion_positions[valid_fine & ~valid_coarse]
+        
+        # Process ions in coarse grid
+        coarse_indices_valid = coarse_indices[valid_coarse]
+        for idx in coarse_indices_valid:
+            coarse_counts[idx[0], idx[1], idx[2]] += 1
+        
+        # Process ions just outside coarse grid (within one fine cell)
+        if len(ions_fine) > 0:
+            fine_indices = np.floor((ions_fine - grid_min) / resolution).astype(int)
+            # Ensure fine indices are within bounds
+            valid_fine_idx = ((fine_indices[:, 0] >= 0) & (fine_indices[:, 0] < nx_fine) &
+                              (fine_indices[:, 1] >= 0) & (fine_indices[:, 1] < ny_fine) &
+                              (fine_indices[:, 2] >= 0) & (fine_indices[:, 2] < nz_fine))
+            fine_indices = fine_indices[valid_fine_idx]
+            for idx in fine_indices:
+                fine_counts[idx[0], idx[1], idx[2]] += 1
+        
+        frame_count += 1
+
+    if frame_count == 0:
+        raise ValueError("No frames processed or no ions found with the selection: " + ion_selection)
+    
+    # Average the counts over frames.
+    avg_coarse_counts = coarse_counts / frame_count
+    avg_fine_counts = fine_counts / frame_count
+
+    # Convert counts to concentration.
+    # For coarse grid:
+    cell_volume_L = (coarse_resolution ** 3) * 1e-27  # in liters
+    NA = 6.022e23  # Avogadro's number
+    coarse_conc_map = (avg_coarse_counts / NA) / cell_volume_L
+
+    # For fine grid (edge cases):
+    fine_cell_volume_L = (resolution ** 3) * 1e-27  # in liters
+    fine_conc_map = (avg_fine_counts / NA) / fine_cell_volume_L
+
+    # Create combined concentration map
+    # First upsample the coarse map
+    fine_conc_map[:int(coarse_factor*nx_coarse), :int(coarse_factor*ny_coarse), :int(coarse_factor*nz_coarse)] = np.repeat(np.repeat(np.repeat(coarse_conc_map, coarse_factor, axis=0),
+                                      coarse_factor, axis=1),
+                                      coarse_factor, axis=2)
+    
+    return fine_conc_map / 2.0
+
+
+
+def plot_ion_conc_slice(ion_conc_map, nx, ny, nz, resolution=1.0):
+    """
+    Plot a mid-plane slice of the ion concentration map.
+
+    Parameters:
+        ion_conc_map (np.ndarray): A 3D array with shape (nx, ny, nz) of ion concentration (M).
+        nx, ny, nz (int): Dimensions of the grid.
+        resolution (float): Grid resolution in Å (default 1.0).
+    """
+    # Select a mid-plane slice along the x-axis.
+    mid_index = nx // 2
+    slice_data = ion_conc_map[mid_index, :, :]
+
+    # Determine the physical extent of the y and z axes.
+    # For a 1 Å grid, extent in y is from 0 to (ny-1)*resolution, similarly for z.
+    extent = [0, (ny - 1) * resolution, 0, (nz - 1) * resolution]
+
+    plt.figure(figsize=(8, 6))
+    plt.imshow(slice_data, origin='lower', extent=extent, aspect='auto', cmap='viridis')
+    plt.title(f"Ion Concentration Map (Slice at x = {mid_index})")
+    plt.xlabel("y (Å)")
+    plt.ylabel("z (Å)")
+    plt.colorbar(label="Ion Concentration (M)")
+    plt.show()
+

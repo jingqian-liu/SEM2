@@ -1,5 +1,3 @@
-# sem_sys.py
-
 # Standard imports
 import os
 import numpy as np
@@ -18,7 +16,7 @@ from scipy.interpolate import RegularGridInterpolator
 from scipy.spatial import cKDTree
 
 # Import helper functions from utils.py
-from utils import condfrac, loadFunc, readbinGrid, get_radius, read_dist_to_conc
+from utils import condfrac, loadFunc, readbinGrid, get_radius, compute_avg_ion_conc_map, plot_ion_conc_slice
 import matplotlib.pyplot as plt
 
 
@@ -34,9 +32,8 @@ class BotBoundary(SubDomain):
 
 # The main class that encapsulates the SEM system
 class sem_sys:
-    def __init__(self, psf_file, dcd_file, 
-                sigma=1.12, Volts=0.15, margin=5.0, str_file = "radius_mapping.json",
-                consider_conc = False, charge_atom_name = 'P', interp_func = 'conc_interp.csv', consider_conc_cutoff = 10.0):
+    def __init__(self, psf_file, dcd_file, sigma=11.2, Volts=0.15, xymargin=5.0, zmargin = 5.0, str_file = "radius_mapping.json",
+                 consider_conc = False, bulk_conc = 1.0):
         """
         Initialize the SEM system by reading the trajectory, setting up the mesh,
         function spaces, and boundary conditions.
@@ -44,12 +41,13 @@ class sem_sys:
         Parameters:
             psf_file (str): Path to the PSF file.
             dcd_file (str): Path to the DCD file.
-            sigma (float): Conductivity scaling parameter.
+            sigma (float): Conductivity in S/m.
             Volts (float): Voltage applied at the top boundary.
             margin (float): Margin to adjust the system boundaries.
         """
-        self.sigma = sigma
+        self.sigma = 0.1 * sigma
         self.Volts = Volts
+        self.bulk_conc = bulk_conc
 
         # Load the MD trajectory and store it as 'universe'
         self.universe = mda.Universe(psf_file, dcd_file)
@@ -65,14 +63,14 @@ class sem_sys:
 
 
         # Adjust extents by margin
-        x_min += margin
-        y_min += margin
-        x_max -= margin
-        y_max -= margin
-        z_max -= 150.0
-        z_min += 15.0
+        x_min += xymargin
+        y_min += xymargin
+        x_max -= xymargin
+        y_max -= xymargin
+        z_max -= zmargin
+        z_min += zmargin
 
-        print(x_min, y_min, z_min, x_max, y_max, z_max)
+        #print(x_min, y_min, z_min, x_max, y_max, z_max)
 
         # With a resolution of 1Å, use np.ceil to cover the entire system.
         self.nx = int(np.ceil(x_max - x_min)) + 1
@@ -135,13 +133,11 @@ class sem_sys:
         with open(str_file, "r") as f:
             self.radius_mapping = json.load(f)
 
-
         self.consider_conc = consider_conc
-        if consider_conc == True:
-            self.charge_atom_name = charge_atom_name
-            self.consider_conc_cutoff = consider_conc_cutoff 
-            self.dist_to_conc_func = read_dist_to_conc(interp_func)
-            
+        if self.consider_conc == True:
+            self.conc = compute_avg_ion_conc_map(self.universe, self.grid_points, (self.nx, self.ny, self.nz), resolution=1.0)
+            self.conc = self.conc / self.bulk_conc 
+            plot_ion_conc_slice(self.conc, self.nx, self.ny, self.nz, resolution=1.0)
 
 
 
@@ -159,7 +155,6 @@ class sem_sys:
         # Adjust the selection string according to your system's residue names.
         sel = self.universe.select_atoms("not (resname TIP3 WAT CLA POT SOD)")
         positions = sel.positions  # positions of the selected atoms
-        print(positions)
         
 
         # Build a KDTree from the selected atom positions for fast nearest-neighbor lookup.
@@ -184,71 +179,35 @@ class sem_sys:
         
         # Cap any distance larger than 5Å to 5Å.
         distances[distances > 5.0] = 5.0
-        #distances[distances < 5.0] = 0.0
 
         # Reshape the distances back into a 3D array with shape (nx, ny, nz)
         distance_grid = distances.reshape((self.nx, self.ny, self.nz))
         
 
+        '''
+        # After computing distance_grid (shape: (self.nx, self.ny, self.nz)):
+        mid_index = self.nx // 2  # Get the middle index along x
+        slice_data = distance_grid[mid_index, :, :]  # Extract the 2D slice at x = self.nx/2
 
+        # Optionally, define the extent (physical coordinates) for y and z axes.
+        # Here, we assume the grid spans from -Wm/2 to Wm/2 along y and -Hm/2 to Hm/2 along z.
+        extent = [-self.Wm/2., self.Wm/2., -self.Hm/2., self.Hm/2.]
+
+        plt.figure(figsize=(8, 6))
+        plt.imshow(slice_data, origin='lower', extent=extent, aspect='auto')
+        plt.colorbar(label='Distance (Å)')
+        plt.title(f"Mysem Distance Grid Slice at x = {self.nx//2} (midpoint)")
+        plt.xlabel('y (Å)')
+        plt.ylabel('z (Å)')
+        plt.show()
+        '''
 
         # Compute conductivity scaling based on the grid distances.
         calcSig = self.sigma * condfrac(distance_grid)
 
 
-        # Plot calcSig before applying ion concentration correction.
-        mid_index = self.nx // 2  # mid-plane along the x-axis
-        plt.figure(figsize=(6,5))
-        plt.imshow(calcSig[mid_index, :, :], origin='lower',
-                extent=[-self.Wm/2., self.Wm/2., -self.Hm/2., self.Hm/2.],
-                aspect='auto')
-        plt.title("calcSig BEFORE ion concentration correction")
-        plt.xlabel("y (Å)")
-        plt.ylabel("z (Å)")
-        plt.colorbar(label="calcSig")
-        plt.show()
-
-
-        # If concentration considerations are enabled, update calcSig accordingly.
-        if self.consider_conc:
-            # Build selection string for charged atoms (adjust based on your naming)
-            selection_string = "name " + self.charge_atom_name
-            sel_charge = self.universe.select_atoms(selection_string)
-            
-            if len(sel_charge) == 0:
-                print("Warning: No charged atoms selected with:", selection_string)
-            else:
-                charge_positions = sel_charge.positions  # positions of the charged atoms
-                print("Charged atoms positions shape:", charge_positions.shape)
-
-                # Build a KDTree from the charged atom positions.
-                charge_tree = cKDTree(charge_positions)
-
-                # Query the KDTree: for each grid point, get the distance to the nearest charged atom.
-                charge_distances, _ = charge_tree.query(self.grid_points)
-                charge_distance_grid = charge_distances.reshape((self.nx, self.ny, self.nz))
-                print("Charge distance grid computed. Shape:", charge_distance_grid.shape)
-
-                # Create a mask for grid points where the distance to a charged atom is below the cutoff.
-                sl = charge_distance_grid < self.consider_conc_cutoff
-                print(f"Number of grid points within concentration cutoff: {np.sum(sl)}")
-
-                # Update calcSig at those grid points by scaling with the interpolated ion concentration.
-                calcSig[sl] = calcSig[sl] * self.dist_to_conc_func(charge_distance_grid[sl])
-
-
-        
-                # Plot calcSig after applying ion concentration correction.
-                plt.figure(figsize=(6,5))
-                plt.imshow(calcSig[mid_index, :, :], origin='lower',
-                        extent=[-self.Wm/2., self.Wm/2., -self.Hm/2., self.Hm/2.],
-                        aspect='auto')
-                plt.title("calcSig AFTER ion concentration correction")
-                plt.xlabel("y (Å)")
-                plt.ylabel("z (Å)")
-                plt.colorbar(label="calcSig")
-                plt.show()
-
+        if self.consider_conc == True:
+            calcSig = calcSig * self.conc
 
         interpfunction = RegularGridInterpolator(
             (np.linspace(-self.Lm/2., self.Lm/2., num=self.nx),
@@ -256,9 +215,6 @@ class sem_sys:
              np.linspace(-self.Hm/2., self.Hm/2., num=self.nz)),
             calcSig, bounds_error=False, fill_value=self.sigma)
         loadFunc(self.mesh, self.F, self.sig, interpfunction)
-
-
-
 
     def solve(self, solver):
         """

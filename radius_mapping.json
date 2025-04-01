@@ -1,0 +1,9 @@
+[
+    {"prefix": "N", "radius": 1.4},
+    {"prefix": "O", "radius": 1.3},
+    {"prefix": "C", "radius": 1.5},
+    {"prefix": "H", "radius": 1.0},
+    {"prefix": "P", "radius": 1.5},
+    {"prefix": "S", "radius": 1.9}
+
+]
