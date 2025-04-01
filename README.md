@@ -56,8 +56,8 @@ python3 run_sem.py example.psf example.dcd \
     --volt 0.2 \
     --xymargin 10.0 \
     --zmargin 5.0 \
-    --consider_conc \       # Enable concentration effects
-    --bulk_conc 1.0 \       # Bulk ion concentration (M)
+    --consider_conc        # Enable concentration effects \
+    --bulk_conc 1.0        # Bulk ion concentration (M) \
     --o currents.dat
 
 
@@ -66,14 +66,14 @@ python3 run_sem.py example.psf example.dcd \
 If you use SEM/SEM2 in your research, please cite the original SEM paper:
 
 @article{wilson2019rapid,
-  title={Rapid and accurate determination of nanopore ionic current using a steric exclusion model},
-  author={Wilson, James and Sarthak, Kumar and Si, Wei and Gao, Luyu and Aksimentiev, Aleksei},
-  journal={Acs Sensors},
-  volume={4},
-  number={3},
-  pages={634--644},
-  year={2019},
-  publisher={ACS Publications}
+  title={Rapid and accurate determination of nanopore ionic current using a steric exclusion model}, \
+  author={Wilson, James and Sarthak, Kumar and Si, Wei and Gao, Luyu and Aksimentiev, Aleksei},\
+  journal={Acs Sensors},\
+  volume={4},\
+  number={3},\
+  pages={634--644},\
+  year={2019},\
+  publisher={ACS Publications}\
 }
 
 
