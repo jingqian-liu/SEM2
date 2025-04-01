@@ -41,10 +41,10 @@ The **Steric Exclusion Model (SEM)** predicts ionic current through nanopores. T
 To predict ionic current without concentration effects, use:
 
 python3 run_sem.py example.psf example.dcd \
-    --sigma 11.2 \          # Conductivity of 1M KCl (S/m)
-    --volt 0.2 \            # Applied voltage (V)
-    --xymargin 10.0 \       # XY margin (Å)
-    --zmargin 5.0 \         # Z margin (Å)
+    --sigma 11.2           # Conductivity of 1M KCl (S/m) \
+    --volt 0.2           # Applied voltage (V) \
+    --xymargin 10.0     # XY margin (Å) \
+    --zmargin 5.0          # Z margin (Å) \
     --o currents.dat        # Output current file (nA)
 
 2. Running SEM2 (With UnEven Distribution of Ion Concentration Considered)
