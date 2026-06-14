@@ -75,15 +75,16 @@ If you use SEM/SEM2 in your research, please cite the original SEM paper:
   year={2019},\
   publisher={ACS Publications}\
 }
+\
 @article{soni2025full,
-  title={Full-length protein classification via cysteine fingerprinting in solid-state nanopores},
-  author={Soni, Neeraj and Rosenstock, Zohar and Verma, Navneet C and Siddharth, Krishnan and Talor, Noam and Liu, Jingqian and Marom, Barak and Kolomeisky, Anatoly B and Aksimentiev, Aleksei and Meller, Amit},
-  journal={Nature Nanotechnology},
-  volume={20},
-  number={10},
-  pages={1482--1490},
-  year={2025},
-  publisher={Nature Publishing Group UK London}
+  title={Full-length protein classification via cysteine fingerprinting in solid-state nanopores},\
+  author={Soni, Neeraj and Rosenstock, Zohar and Verma, Navneet C and Siddharth, Krishnan and Talor, Noam and Liu, Jingqian and Marom, Barak and Kolomeisky, Anatoly B and Aksimentiev, Aleksei and Meller, Amit},\
+  journal={Nature Nanotechnology},\
+  volume={20},\
+  number={10},\
+  pages={1482--1490},\
+  year={2025},\
+  publisher={Nature Publishing Group UK London}\
 }
 
 
