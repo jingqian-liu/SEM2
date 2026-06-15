@@ -25,7 +25,7 @@ The **Steric Exclusion Model (SEM)** predicts ionic current through nanopores. T
 ## Installation  
 1. Clone this repository:  
      
-   git clone https://github.com/your_username/SEM2.git  
+   git clone https://github.com/jingqian-liu/SEM2.git  
    cd SEM2  
 
 2. Set up the Conda environment 
